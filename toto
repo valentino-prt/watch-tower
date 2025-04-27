@@ -1,0 +1,55 @@
+#!/bin/bash
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# --- CONFIGURATION ---
+TARGET=$1
+NAME=$2
+ACTION=$3
+
+if [[ -z "$TARGET" || -z "$NAME" || -z "$ACTION" ]]; then
+  echo "Usage: $0 <target: agent|monitoring-stack> <name: app|env> <action>"
+  exit 1
+fi
+
+JSON_FILE="./${TARGET}/${NAME}/targets.json"
+
+if [[ ! -f "$JSON_FILE" ]]; then
+  echo "JSON config file not found: $JSON_FILE"
+  exit 1
+fi
+
+get_apps() {
+  if [[ "$TARGET" == "agent" ]]; then
+    echo "$APP"
+  else
+    jq -r ".${ROOT_KEY} | keys[]" "$JSON_FILE"
+  fi
+}
+
+get_hosts() {
+  local app=$1
+  jq -r --arg app "$app" ".${ROOT_KEY}[\$app][]?.hostname" "$JSON_FILE"
+}
+
+run_remote_action() {
+  local host=$1
+  local app=$2
+  echo "Connecting to $host for $app..."
+  ssh "$host" "
+    cd \$HOME/SPP-mon/releases/current/bin/ && \
+    ./manage.sh $app $ACTION
+  "
+}
+
+# --- MAIN EXECUTION ---
+for app in $(get_apps); do
+  HOSTS=$(get_hosts "$app")
+  if [[ -z "$HOSTS" ]]; then
+    echo "No hosts found for $app"
+    continue
+  fi
+  for host in $HOSTS; do
+    run_remote_action "$host" "$app"
+  done
+done
