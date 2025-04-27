@@ -23,13 +23,13 @@ get_apps() {
   if [[ "$TARGET" == "agent" ]]; then
     echo "$APP"
   else
-    jq -r ".${ROOT_KEY} | keys[]" "$JSON_FILE"
+    jq -r '.apps | keys[]' "$JSON_FILE"
   fi
 }
 
 get_hosts() {
   local app=$1
-  jq -r --arg app "$app" ".${ROOT_KEY}[\$app][]?.hostname" "$JSON_FILE"
+  jq -r --arg app "$app" '.apps[$app][]?.hostname' "$JSON_FILE"
 }
 
 run_remote_action() {
