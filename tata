@@ -1,0 +1,55 @@
+name: Build Bundles
+
+on:
+  push:
+    paths:
+      - 'Application/**'
+      - 'Envs/*.env'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set changed files
+        id: changes
+        run: |
+          echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+          git diff --name-only ${{ github.event.before }} ${{ github.sha }} >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Detect changes and run build
+        run: |
+          CHANGED_FILES="${{ steps.changes.outputs.changed_files }}"
+          declare -A apps_to_build
+
+          while read -r file; do
+            if [[ "$file" == Application/* ]]; then
+              app=$(echo "$file" | cut -d'/' -f2)
+              apps_to_build["$app"]="all_envs"
+            elif [[ "$file" == Envs/* ]]; then
+              env=$(basename "$file" .env)
+              for app_dir in Application/*/; do
+                app=$(basename "$app_dir")
+                apps_to_build["$app"]+="$env "
+              done
+            fi
+          done <<< "$CHANGED_FILES"
+
+          for app in "${!apps_to_build[@]}"; do
+            envs="${apps_to_build[$app]}"
+            if [[ "$envs" == "all_envs" ]]; then
+              for env_file in Envs/*.env; do
+                env=$(basename "$env_file" .env)
+                echo "Triggering build for app=$app, env=$env"
+                bash Ops/buildbundle.sh -a "$app" -e "$env"
+              done
+            else
+              for env in $envs; do
+                echo "Triggering build for app=$app, env=$env"
+                bash Ops/buildbundle.sh -a "$app" -e "$env"
+              done
+            fi
+          done
